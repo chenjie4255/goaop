@@ -4,11 +4,13 @@ import (
 	"errors"
 	"fmt"
 	"go/ast"
+	"go/build"
 	"go/parser"
 	"go/token"
 	"io/ioutil"
 	"os"
 	"regexp"
+	"strings"
 )
 
 var fileContent []byte
@@ -52,7 +54,29 @@ func parsePackageName(f *ast.File) (string, error) {
 func parseInterfaces(f *ast.File, fset *token.FileSet, data *renderData) error {
 	importMap := map[string]string{}
 	for _, imp := range f.Imports {
-		importMap[imp.Name.Name] = imp.Path.Value
+		if imp.Name != nil {
+			importMap[imp.Name.Name] = imp.Path.Value
+		} else {
+			dirset := token.FileSet{}
+			goPath := strings.Split(os.Getenv("GOPATH"), string(os.PathListSeparator))
+			if len(goPath) == 0 {
+				goPath = append(goPath, build.Default.GOPATH)
+			} else if goPath[0] == "" {
+				goPath[0] = build.Default.GOPATH
+			}
+
+			for _, gp := range goPath {
+				pkgs, err := parser.ParseDir(&dirset, gp+"/src/"+strings.Trim(imp.Path.Value, `"`), nil, parser.PackageClauseOnly)
+				if err != nil {
+					fmt.Println(err)
+					continue
+				}
+				for k := range pkgs {
+					importMap[k] = imp.Path.Value
+				}
+				fmt.Println("pkgs", pkgs)
+			}
+		}
 	}
 
 	ctx := parseContext{}

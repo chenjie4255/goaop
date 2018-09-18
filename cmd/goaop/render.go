@@ -17,25 +17,25 @@ import (
 {{.Name}} {{.Path}}{{end}}
 )
 
-type measure{{.InterfaceName}} struct {
+type aop{{.InterfaceName}} struct {
 	{{.InterfaceName}}
 	builder goaop.PointcutBuilder
 }
 
-func NewMeasure{{.InterfaceName}}(o {{.InterfaceName}}, builder goaop.PointcutBuilder) {{.InterfaceName}} {
-	return &measure{{.InterfaceName}}{o, builder}
+func New{{.InterfaceName}}AOP(o {{.InterfaceName}}, builder goaop.PointcutBuilder) {{.InterfaceName}} {
+	return &aop{{.InterfaceName}}{o, builder}
 }
 
 {{range .Methods}}
-func (m *measure{{$.InterfaceName}}) {{.Raw}} {
-	pointcut := m.builder.Build("{{.Name}}")
+func (a *aop{{$.InterfaceName}}) {{.Raw}} {
+	pointcut := a.builder.Build("{{.Name}}")
 	if pointcut == nil {
-		{{if eq .ResultCount 0}}m.{{.Name}}({{.GetParams}}){{else}}return m.{{.Name}}({{.GetParams}}){{end}}
+		{{if eq .ResultCount 0}}a.{{$.InterfaceName}}.{{.Name}}({{.GetParams}}){{else}}return a.{{$.InterfaceName}}.{{.Name}}({{.GetParams}}){{end}}
 	} else {
 		pointcut.OnEntry()
-		{{if eq .ResultCount 0}}m.{{.Name}}({{.GetParams}})
+		{{if eq .ResultCount 0}}a.{{$.InterfaceName}}.{{.Name}}({{.GetParams}})
 		pointcut.OnReturn(nil)
-		{{else}} {{.GetResults}} := m.{{.Name}}({{.GetParams}})
+		{{else}} {{.GetResults}} := a.{{$.InterfaceName}}.{{.Name}}({{.GetParams}})
 		{{if eq .ResultErrorIndex -1}}
 		pointcut.OnReturn(nil)
 		{{else}}pointcut.OnReturn(err){{end}}
@@ -43,7 +43,6 @@ func (m *measure{{$.InterfaceName}}) {{.Raw}} {
 	}
 }
 {{end}}
-
 
 `))
 
