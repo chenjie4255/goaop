@@ -8,8 +8,9 @@ import (
 	"time"
 )
 
+var inputFile string
+
 func main() {
-	inputFile := ""
 	flag.StringVar(&inputFile, "f", "", "output file")
 	flag.Parse()
 

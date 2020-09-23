@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"errors"
 	"fmt"
 	"go/ast"
@@ -9,6 +10,7 @@ import (
 	"go/token"
 	"io/ioutil"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 )
@@ -28,6 +30,8 @@ func parseFile(path string) (renderData, error) {
 	fc.Close()
 
 	fset := token.NewFileSet()
+
+	fmt.Println("parser.ParseFile", path)
 	f, err := parser.ParseFile(fset, path, nil, parser.ParseComments)
 	if err != nil {
 		return data, err
@@ -53,22 +57,91 @@ func parsePackageName(f *ast.File) (string, error) {
 
 func parseInterfaces(f *ast.File, fset *token.FileSet, data *renderData) error {
 	importMap := map[string]string{}
+	fmt.Println(f.Scope.String())
 	for _, imp := range f.Imports {
 		if imp.Name != nil {
 			importMap[imp.Name.Name] = imp.Path.Value
 		} else {
 			dirset := token.FileSet{}
 			goPath := strings.Split(os.Getenv("GOPATH"), string(os.PathListSeparator))
+			goRoot := build.Default.GOROOT
+			if goRoot != "" {
+				goPath = append(goPath, goRoot)
+			}
+
 			if len(goPath) == 0 {
 				goPath = append(goPath, build.Default.GOPATH)
 			} else if goPath[0] == "" {
 				goPath[0] = build.Default.GOPATH
 			}
 
-			for _, gp := range goPath {
-				pkgs, err := parser.ParseDir(&dirset, gp+"/src/"+strings.Trim(imp.Path.Value, `"`), nil, parser.PackageClauseOnly)
+			build.Default.SrcDirs()
+
+			modFilePath := ""
+			if os.Getenv("GO111MODULE") == "on" {
+				fmt.Println("GO111MODULE on")
+				// find go.mod file
+				//info, err := os.Stat(inputFile)
+				//if err != nil {
+				//	panic(err)
+				//}
+				wd, err := os.Getwd()
 				if err != nil {
-					fmt.Println(err)
+					panic(err)
+				}
+				fPath := filepath.Join(wd, inputFile)
+				goModDir := filepath.Dir(fPath)
+				for {
+					info, err := os.Stat(filepath.Join(goModDir, "go.mod"))
+					if err == nil && !info.IsDir() {
+						break
+					}
+					d := filepath.Dir(goModDir)
+					if len(d) >= len(goModDir) {
+						goModDir = ""
+						break
+					}
+					goModDir = d
+				}
+
+				if goModDir != "" {
+					fmt.Println("find mod.file file's dir", goModDir)
+					// read go.mod file
+					modF, err := os.Open(filepath.Join(goModDir, "go.mod"))
+					if err != nil {
+						panic(err)
+					}
+					firstLine, err := bufio.NewReader(modF).ReadString('\n')
+					if err != nil {
+						panic(err)
+					}
+					modF.Close()
+					results := strings.Split(firstLine, " ")
+					moduleRoot := strings.TrimSpace(results[1])
+					importPath := strings.Trim(imp.Path.Value, `"`)
+					if strings.HasPrefix(importPath, moduleRoot) {
+						modFilePath = filepath.Join(goModDir, strings.TrimPrefix(importPath, moduleRoot))
+					}
+					fmt.Println("go module path", modFilePath)
+				}
+			}
+
+			for _, gp := range goPath {
+				dirPath := gp+"/src/"+strings.Trim(imp.Path.Value, `"`)
+				pkgs, err := parser.ParseDir(&dirset, dirPath, nil, parser.PackageClauseOnly)
+				if err != nil {
+					fmt.Println(dirPath, err)
+					continue
+				}
+				for k := range pkgs {
+					importMap[k] = imp.Path.Value
+				}
+				fmt.Println("pkgs", pkgs)
+			}
+			if modFilePath != ""{
+				pkgs, err := parser.ParseDir(&dirset, modFilePath, nil, parser.PackageClauseOnly)
+				if err != nil {
+					fmt.Println(imp.Path.Value, err)
 					continue
 				}
 				for k := range pkgs {
